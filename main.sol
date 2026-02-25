@@ -178,3 +178,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
 
     // -------------------------------------------------------------------------
     // EXTERNAL (GOVERNANCE)
+    // -------------------------------------------------------------------------
+
+    function pause() external onlyGovernor {
+        _pause();
+        emit CD_GovernancePaused(msg.sender, block.number);
+    }
+
+    function unpause() external onlyGovernor {
+        _unpause();
+        emit CD_GovernanceUnpaused(msg.sender, block.number);
+    }
+
+    function setValidator(address newValidator) external onlyGovernor {
+        if (newValidator == address(0)) revert CD_ZeroAddress();
+        address prev = validator;
+        validator = newValidator;
+        emit CD_ValidatorSet(prev, newValidator, block.number);
+    }
+
+    function setFeeCollector(address newFeeCollector) external onlyGovernor {
+        if (newFeeCollector == address(0)) revert CD_ZeroAddress();
+        address prev = feeCollector;
+        feeCollector = newFeeCollector;
+        emit CD_FeeCollectorSet(prev, newFeeCollector, block.number);
+    }
+
+    // -------------------------------------------------------------------------
+    // EXTERNAL (TREASURY)
+    // -------------------------------------------------------------------------
+
+    function topUpPool() external payable onlyTreasury whenNotPausedCD {
+        if (msg.value == 0) revert CD_ZeroReward();
+        poolBalance += msg.value;
+        totalPoolToppedUp += msg.value;
+        emit CD_PoolToppedUp(msg.sender, msg.value, block.number);
+    }
+
+    function topUpPoolPublic() external payable whenNotPausedCD {
+        if (msg.value == 0) revert CD_ZeroReward();
+        poolBalance += msg.value;
+        totalPoolToppedUp += msg.value;
+        emit CD_PoolToppedUp(msg.sender, msg.value, block.number);
+    }
+
+    // -------------------------------------------------------------------------
+    // EXTERNAL (REGISTER ZONE)
+    // -------------------------------------------------------------------------
+
+    function registerZone(
+        bytes32 zoneId,
+        int32 latE6,
+        int32 lngE6,
+        uint16 speedLimitKph,
+        uint256 rewardWei,
+        ZoneType zoneType
+    ) external whenNotPausedCD nonReentrant {
+        if (_zonesById[zoneId].blockRegistered != 0) revert CD_ZoneExists();
+        if (_allZoneIds.length >= CD_MAX_RADAR_ZONES) revert CD_MaxZonesReached();
+        if (speedLimitKph < CD_MIN_SPEED_KPH || speedLimitKph > CD_MAX_SPEED_KPH) revert CD_InvalidSpeedLimit();
+        if (latE6 < CD_LAT_E6_MIN || latE6 > CD_LAT_E6_MAX) revert CD_InvalidLatE6();
+        if (lngE6 < CD_LNG_E6_MIN || lngE6 > CD_LNG_E6_MAX) revert CD_InvalidLngE6();
+
+        _zonesById[zoneId] = RadarZone({
+            zoneId: zoneId,
+            latE6: latE6,
+            lngE6: lngE6,
+            speedLimitKph: speedLimitKph,
+            reporter: msg.sender,
+            rewardWei: rewardWei,
+            claimed: false,
+            active: true,
+            blockRegistered: block.number,
+            zoneType: zoneType,
+            validationStatus: ValidationStatus.Pending,
+            lastUpdatedBlock: block.number
+        });
+
+        _zoneIdsByReporter[msg.sender].push(zoneId);
+        _allZoneIds.push(zoneId);
+        _zoneIndexById[zoneId] = _allZoneIds.length - 1;
+        totalZonesRegistered += 1;
+        totalZonesActive += 1;
+
+        emit CD_RadarZoneRegistered(zoneId, msg.sender, latE6, lngE6, speedLimitKph, rewardWei, block.number);
+    }
+
+    function updateSpeedLimit(bytes32 zoneId, uint16 newKph) external whenNotPausedCD {
+        RadarZone storage z = _zonesById[zoneId];
+        if (z.blockRegistered == 0) revert CD_ZoneNotFound();
+        if (z.reporter != msg.sender && msg.sender != validator) revert CD_NotReporter();
