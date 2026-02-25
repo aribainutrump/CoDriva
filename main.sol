@@ -898,3 +898,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
             rewards[i] = z.rewardWei;
             claimeds[i] = z.claimed;
             actives[i] = z.active;
+            blockRegs[i] = z.blockRegistered;
+            ztypes[i] = z.zoneType;
+            vstatuses[i] = z.validationStatus;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (COORDINATE RANGE - APPROXIMATE)
+    // -------------------------------------------------------------------------
+
+    function getZonesInLatLngWindow(
+        int32 latE6Min,
+        int32 latE6Max,
+        int32 lngE6Min,
+        int32 lngE6Max,
+        uint256 offset,
+        uint256 limit
+    ) external view returns (ZoneSummary[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        if (latE6Min > latE6Max || lngE6Min > lngE6Max) revert CD_InvalidCoordinates();
+        uint256 collected = 0;
+        uint256 len = _allZoneIds.length;
+        ZoneSummary[] memory tmp = new ZoneSummary[](limit);
+        for (uint256 i = 0; i < len && collected < limit; i++) {
+            RadarZone storage z = _zonesById[_allZoneIds[i]];
+            if (z.latE6 < latE6Min || z.latE6 > latE6Max) continue;
+            if (z.lngE6 < lngE6Min || z.lngE6 > lngE6Max) continue;
+            if (collected < offset) { collected++; continue; }
+            tmp[collected - offset] = ZoneSummary({
+                zoneId: z.zoneId,
+                latE6: z.latE6,
+                lngE6: z.lngE6,
+                speedLimitKph: z.speedLimitKph,
+                active: z.active,
+                claimed: z.claimed,
+                blockRegistered: z.blockRegistered
+            });
+            collected++;
+            if (collected - offset >= limit) break;
+        }
+        uint256 n = collected > offset ? collected - offset : 0;
+        if (n > limit) n = limit;
+        out = new ZoneSummary[](n);
+        for (uint256 j = 0; j < n; j++) out[j] = tmp[j];
+    }
+
+    function countZonesInLatLngWindow(int32 latE6Min, int32 latE6Max, int32 lngE6Min, int32 lngE6Max) external view returns (uint256 count) {
+        if (latE6Min > latE6Max || lngE6Min > lngE6Max) revert CD_InvalidCoordinates();
+        uint256 len = _allZoneIds.length;
+        for (uint256 i = 0; i < len; i++) {
+            RadarZone storage z = _zonesById[_allZoneIds[i]];
+            if (z.latE6 >= latE6Min && z.latE6 <= latE6Max && z.lngE6 >= lngE6Min && z.lngE6 <= lngE6Max) count++;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (MULTI-GET BY IDS)
+    // -------------------------------------------------------------------------
+
+    function getZonesByIds(bytes32[] calldata zoneIds) external view returns (RadarZone[] memory out) {
+        if (zoneIds.length > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 n = zoneIds.length;
+        out = new RadarZone[](n);
+        for (uint256 i = 0; i < n; i++) {
+            if (_zonesById[zoneIds[i]].blockRegistered == 0) continue;
+            out[i] = _zonesById[zoneIds[i]];
+        }
+    }
+
+    function getZoneSummariesByIds(bytes32[] calldata zoneIds) external view returns (ZoneSummary[] memory out) {
+        if (zoneIds.length > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 n = zoneIds.length;
+        out = new ZoneSummary[](n);
+        for (uint256 i = 0; i < n; i++) {
+            RadarZone storage z = _zonesById[zoneIds[i]];
+            if (z.blockRegistered == 0) continue;
+            out[i] = ZoneSummary({
+                zoneId: z.zoneId,
+                latE6: z.latE6,
+                lngE6: z.lngE6,
+                speedLimitKph: z.speedLimitKph,
+                active: z.active,
+                claimed: z.claimed,
+                blockRegistered: z.blockRegistered
+            });
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (REPORTER STATS)
