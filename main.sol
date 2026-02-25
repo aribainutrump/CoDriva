@@ -268,3 +268,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
         RadarZone storage z = _zonesById[zoneId];
         if (z.blockRegistered == 0) revert CD_ZoneNotFound();
         if (z.reporter != msg.sender && msg.sender != validator) revert CD_NotReporter();
+        if (!z.active) revert CD_ZoneNotActive();
+        if (newKph < CD_MIN_SPEED_KPH || newKph > CD_MAX_SPEED_KPH) revert CD_InvalidSpeedLimit();
+
+        uint16 oldKph = z.speedLimitKph;
+        z.speedLimitKph = newKph;
+        z.lastUpdatedBlock = block.number;
+
+        emit CD_SpeedLimitUpdated(zoneId, oldKph, newKph, block.number);
+    }
+
+    function deactivateZone(bytes32 zoneId) external whenNotPausedCD {
+        RadarZone storage z = _zonesById[zoneId];
+        if (z.blockRegistered == 0) revert CD_ZoneNotFound();
+        if (z.reporter != msg.sender && msg.sender != validator && msg.sender != governor) revert CD_NotReporter();
+        if (!z.active) revert CD_ZoneNotActive();
+
+        z.active = false;
+        totalZonesActive -= 1;
+        emit CD_ZoneDeactivated(zoneId, msg.sender, block.number);
+    }
+
+    function verifyZone(bytes32 zoneId) external onlyValidator whenNotPausedCD {
+        RadarZone storage z = _zonesById[zoneId];
+        if (z.blockRegistered == 0) revert CD_ZoneNotFound();
+        z.validationStatus = ValidationStatus.Verified;
+        z.lastUpdatedBlock = block.number;
+    }
+
+    function rejectZone(bytes32 zoneId) external onlyValidator whenNotPausedCD {
+        RadarZone storage z = _zonesById[zoneId];
+        if (z.blockRegistered == 0) revert CD_ZoneNotFound();
+        z.validationStatus = ValidationStatus.Rejected;
+        z.lastUpdatedBlock = block.number;
+    }
+
+    // -------------------------------------------------------------------------
+    // EXTERNAL (CLAIM)
+    // -------------------------------------------------------------------------
+
+    function claimAlertReward(bytes32 zoneId) external whenNotPausedCD nonReentrant {
+        RadarZone storage z = _zonesById[zoneId];
+        if (z.blockRegistered == 0) revert CD_ZoneNotFound();
+        if (z.claimed) revert CD_AlreadyClaimed();
+        if (!z.active) revert CD_ZoneNotActive();
+        if (z.rewardWei == 0) revert CD_ZeroReward();
+        if (poolBalance < z.rewardWei) revert CD_TransferFailed();
+
+        z.claimed = true;
+        poolBalance -= z.rewardWei;
+        totalRewardsClaimed += z.rewardWei;
+
+        (bool ok,) = msg.sender.call{ value: z.rewardWei }("");
+        if (!ok) revert CD_TransferFailed();
+
+        emit CD_AlertClaimed(zoneId, msg.sender, z.rewardWei, block.number);
+    }
+
+    function claimAlertRewardBatch(bytes32[] calldata zoneIds) external whenNotPausedCD nonReentrant {
+        if (zoneIds.length > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 total = 0;
+        for (uint256 i = 0; i < zoneIds.length; i++) {
+            RadarZone storage z = _zonesById[zoneIds[i]];
+            if (z.blockRegistered == 0) continue;
+            if (z.claimed || !z.active || z.rewardWei == 0) continue;
+            total += z.rewardWei;
+            z.claimed = true;
+            totalRewardsClaimed += z.rewardWei;
+            emit CD_AlertClaimed(z.zoneId, msg.sender, z.rewardWei, block.number);
+        }
+        if (total == 0) revert CD_ZoneNotFound();
+        if (poolBalance < total) revert CD_TransferFailed();
+        poolBalance -= total;
+        (bool ok,) = msg.sender.call{ value: total }("");
+        if (!ok) revert CD_TransferFailed();
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (SINGLE ZONE)
+    // -------------------------------------------------------------------------
+
+    function getZone(bytes32 zoneId) external view returns (RadarZone memory) {
+        if (_zonesById[zoneId].blockRegistered == 0) revert CD_ZoneNotFound();
+        return _zonesById[zoneId];
+    }
+
+    function getZoneSummary(bytes32 zoneId) external view returns (ZoneSummary memory) {
+        RadarZone storage z = _zonesById[zoneId];
+        if (z.blockRegistered == 0) revert CD_ZoneNotFound();
+        return ZoneSummary({
+            zoneId: z.zoneId,
