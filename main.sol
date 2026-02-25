@@ -628,3 +628,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
 
     function countZonesByType(ZoneType zoneType) external view returns (uint256 count) {
         uint256 len = _allZoneIds.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (_zonesById[_allZoneIds[i]].zoneType == zoneType) count++;
+        }
+    }
+
+    function countZonesByValidationStatus(ValidationStatus status) external view returns (uint256 count) {
+        uint256 len = _allZoneIds.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (_zonesById[_allZoneIds[i]].validationStatus == status) count++;
+        }
+    }
+
+    function countActiveZonesByReporter(address reporter) external view returns (uint256 count) {
+        bytes32[] storage ids = _zoneIdsByReporter[reporter];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (_zonesById[ids[i]].active) count++;
+        }
+    }
+
+    function countUnclaimedZonesByReporter(address reporter) external view returns (uint256 count) {
+        bytes32[] storage ids = _zoneIdsByReporter[reporter];
+        for (uint256 i = 0; i < ids.length; i++) {
+            RadarZone storage z = _zonesById[ids[i]];
+            if (z.active && !z.claimed && z.rewardWei > 0) count++;
+        }
+    }
+
+    function getClaimableRewardForReporter(address reporter) external view returns (uint256 total) {
+        bytes32[] storage ids = _zoneIdsByReporter[reporter];
+        for (uint256 i = 0; i < ids.length; i++) {
+            RadarZone storage z = _zonesById[ids[i]];
+            if (z.active && !z.claimed && z.rewardWei > 0) total += z.rewardWei;
+        }
+    }
+
+    function hasClaimableZones(address reporter) external view returns (bool) {
+        bytes32[] storage ids = _zoneIdsByReporter[reporter];
+        for (uint256 i = 0; i < ids.length; i++) {
+            RadarZone storage z = _zonesById[ids[i]];
+            if (z.active && !z.claimed && z.rewardWei > 0) return true;
+        }
+        return false;
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (BULK ZONE DATA FOR INTEGRATION)
+    // -------------------------------------------------------------------------
+
+    struct ZoneDataRow {
+        bytes32 zoneId;
+        int32 latE6;
+        int32 lngE6;
+        uint16 speedLimitKph;
+        address reporter;
+        uint256 rewardWei;
+        bool claimed;
+        bool active;
+        uint256 blockRegistered;
+        ZoneType zoneType;
+        ValidationStatus validationStatus;
+    }
+
+    function getZoneDataRows(uint256 offset, uint256 limit) external view returns (ZoneDataRow[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 len = _allZoneIds.length;
+        if (offset >= len) return new ZoneDataRow[](0);
+        uint256 end = offset + limit;
+        if (end > len) end = len;
+        uint256 n = end - offset;
+        out = new ZoneDataRow[](n);
+        for (uint256 i = 0; i < n; i++) {
+            RadarZone storage z = _zonesById[_allZoneIds[offset + i]];
+            out[i] = ZoneDataRow({
+                zoneId: z.zoneId,
+                latE6: z.latE6,
+                lngE6: z.lngE6,
+                speedLimitKph: z.speedLimitKph,
+                reporter: z.reporter,
+                rewardWei: z.rewardWei,
+                claimed: z.claimed,
+                active: z.active,
+                blockRegistered: z.blockRegistered,
+                zoneType: z.zoneType,
+                validationStatus: z.validationStatus
+            });
+        }
+    }
+
+    function getZoneDataRowsActiveOnly(uint256 offset, uint256 limit) external view returns (ZoneDataRow[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
