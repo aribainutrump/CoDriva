@@ -1168,3 +1168,83 @@ contract CoDriva is ReentrancyGuard, Pausable {
     }
 
     function totalZonesActiveCount() external view returns (uint256) {
+        return totalZonesActive;
+    }
+
+    function getZoneByIndex(uint256 index) external view returns (RadarZone memory) {
+        if (index >= _allZoneIds.length) revert CD_ZoneNotFound();
+        return _zonesById[_allZoneIds[index]];
+    }
+
+    function getZoneSummaryByIndex(uint256 index) external view returns (ZoneSummary memory) {
+        if (index >= _allZoneIds.length) revert CD_ZoneNotFound();
+        RadarZone storage z = _zonesById[_allZoneIds[index]];
+        return ZoneSummary({
+            zoneId: z.zoneId,
+            latE6: z.latE6,
+            lngE6: z.lngE6,
+            speedLimitKph: z.speedLimitKph,
+            active: z.active,
+            claimed: z.claimed,
+            blockRegistered: z.blockRegistered
+        });
+    }
+
+    function supportsInterface(bytes4) external pure returns (bool) {
+        return false;
+    }
+
+    function version() external pure returns (string memory) {
+        return "CoDriva.RadarZones.v1";
+    }
+
+    function chainRef() external pure returns (bytes32) {
+        return CD_NETWORK_TAG;
+    }
+
+    function maxRadarZonesCap() external pure returns (uint256) {
+        return CD_MAX_RADAR_ZONES;
+    }
+
+    function batchQueryCap() external pure returns (uint256) {
+        return CD_MAX_BATCH_QUERY;
+    }
+
+    function speedLimitBounds() external pure returns (uint16 minKph, uint16 maxKph) {
+        minKph = CD_MIN_SPEED_KPH;
+        maxKph = CD_MAX_SPEED_KPH;
+    }
+
+    function latLngBoundsE6() external pure returns (int32 latMin, int32 latMax, int32 lngMin, int32 lngMax) {
+        latMin = CD_LAT_E6_MIN;
+        latMax = CD_LAT_E6_MAX;
+        lngMin = CD_LNG_E6_MIN;
+        lngMax = CD_LNG_E6_MAX;
+    }
+
+    function getZoneCountByType(ZoneType zt) external view returns (uint256 count) {
+        uint256 len = _allZoneIds.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (_zonesById[_allZoneIds[i]].zoneType == zt) count++;
+        }
+    }
+
+    function getZoneCountByValidation(ValidationStatus vs) external view returns (uint256 count) {
+        uint256 len = _allZoneIds.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (_zonesById[_allZoneIds[i]].validationStatus == vs) count++;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // RECEIVE
+    // -------------------------------------------------------------------------
+
+    receive() external payable {
+        poolBalance += msg.value;
+        totalPoolToppedUp += msg.value;
+        emit CD_PoolToppedUp(msg.sender, msg.value, block.number);
+    }
+}
+
+
