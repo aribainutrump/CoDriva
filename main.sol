@@ -538,3 +538,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
                 latE6: z.latE6,
                 lngE6: z.lngE6,
                 speedLimitKph: z.speedLimitKph,
+                active: z.active,
+                claimed: z.claimed,
+                blockRegistered: z.blockRegistered
+            });
+            collected++;
+            if (collected - offset >= limit) break;
+        }
+        uint256 n = collected > offset ? collected - offset : 0;
+        if (n > limit) n = limit;
+        out = new ZoneSummary[](n);
+        for (uint256 j = 0; j < n; j++) out[j] = tmp[j];
+    }
+
+    function getZonesInSpeedRange(uint16 minKph, uint16 maxKph, uint256 offset, uint256 limit) external view returns (ZoneSummary[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        if (minKph > maxKph || maxKph > CD_MAX_SPEED_KPH) revert CD_InvalidSpeedLimit();
+        uint256 collected = 0;
+        uint256 len = _allZoneIds.length;
+        ZoneSummary[] memory tmp = new ZoneSummary[](limit);
+        for (uint256 i = 0; i < len && collected < limit; i++) {
+            RadarZone storage z = _zonesById[_allZoneIds[i]];
+            if (z.speedLimitKph < minKph || z.speedLimitKph > maxKph) continue;
+            if (collected < offset) { collected++; continue; }
+            tmp[collected - offset] = ZoneSummary({
+                zoneId: z.zoneId,
+                latE6: z.latE6,
+                lngE6: z.lngE6,
+                speedLimitKph: z.speedLimitKph,
+                active: z.active,
+                claimed: z.claimed,
+                blockRegistered: z.blockRegistered
+            });
+            collected++;
+            if (collected - offset >= limit) break;
+        }
+        uint256 n = collected > offset ? collected - offset : 0;
+        if (n > limit) n = limit;
+        out = new ZoneSummary[](n);
+        for (uint256 j = 0; j < n; j++) out[j] = tmp[j];
+    }
+
+    function getReporterZonesInRange(address reporter, uint256 offset, uint256 limit) external view returns (ZoneSummary[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        bytes32[] storage ids = _zoneIdsByReporter[reporter];
+        uint256 len = ids.length;
+        if (offset >= len) return new ZoneSummary[](0);
+        uint256 end = offset + limit;
+        if (end > len) end = len;
+        uint256 n = end - offset;
+        out = new ZoneSummary[](n);
+        for (uint256 i = 0; i < n; i++) {
+            RadarZone storage z = _zonesById[ids[offset + i]];
+            out[i] = ZoneSummary({
+                zoneId: z.zoneId,
+                latE6: z.latE6,
+                lngE6: z.lngE6,
+                speedLimitKph: z.speedLimitKph,
+                active: z.active,
+                claimed: z.claimed,
+                blockRegistered: z.blockRegistered
+            });
+        }
+    }
+
+    function getFullZonesInRange(uint256 offset, uint256 limit) external view returns (RadarZone[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 len = _allZoneIds.length;
+        if (offset >= len) return new RadarZone[](0);
+        uint256 end = offset + limit;
+        if (end > len) end = len;
+        uint256 n = end - offset;
+        out = new RadarZone[](n);
+        for (uint256 i = 0; i < n; i++) {
+            out[i] = _zonesById[_allZoneIds[offset + i]];
+        }
+    }
+
+    function getZoneIdsInRange(uint256 offset, uint256 limit) external view returns (bytes32[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 len = _allZoneIds.length;
+        if (offset >= len) return new bytes32[](0);
+        uint256 end = offset + limit;
+        if (end > len) end = len;
+        uint256 n = end - offset;
+        out = new bytes32[](n);
+        for (uint256 i = 0; i < n; i++) out[i] = _allZoneIds[offset + i];
+    }
+
+    function countZonesByType(ZoneType zoneType) external view returns (uint256 count) {
+        uint256 len = _allZoneIds.length;
