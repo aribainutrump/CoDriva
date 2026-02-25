@@ -1078,3 +1078,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
     function countPendingZones() external view returns (uint256 count) {
         uint256 len = _allZoneIds.length;
         for (uint256 i = 0; i < len; i++) {
+            if (_zonesById[_allZoneIds[i]].validationStatus == ValidationStatus.Pending) count++;
+        }
+    }
+
+    function countUnclaimedActiveZones() external view returns (uint256 count) {
+        uint256 len = _allZoneIds.length;
+        for (uint256 i = 0; i < len; i++) {
+            RadarZone storage z = _zonesById[_allZoneIds[i]];
+            if (z.active && !z.claimed && z.rewardWei > 0) count++;
+        }
+    }
+
+    function getFirstNZoneIds(uint256 n) external view returns (bytes32[] memory out) {
+        if (n > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 len = _allZoneIds.length;
+        if (n > len) n = len;
+        out = new bytes32[](n);
+        for (uint256 i = 0; i < n; i++) out[i] = _allZoneIds[i];
+    }
+
+    function getLastNZoneIds(uint256 n) external view returns (bytes32[] memory out) {
+        if (n > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 len = _allZoneIds.length;
+        if (n > len) n = len;
+        out = new bytes32[](n);
+        for (uint256 i = 0; i < n; i++) out[i] = _allZoneIds[len - 1 - i];
+    }
+
+    function getZoneBlockRegistered(bytes32 zoneId) external view returns (uint256) {
+        if (_zonesById[zoneId].blockRegistered == 0) revert CD_ZoneNotFound();
+        return _zonesById[zoneId].blockRegistered;
+    }
+
+    function getZoneLastUpdatedBlock(bytes32 zoneId) external view returns (uint256) {
+        if (_zonesById[zoneId].blockRegistered == 0) revert CD_ZoneNotFound();
+        return _zonesById[zoneId].lastUpdatedBlock;
+    }
+
+    function getZoneCoordinates(bytes32 zoneId) external view returns (int32 latE6, int32 lngE6) {
+        RadarZone storage z = _zonesById[zoneId];
+        if (z.blockRegistered == 0) revert CD_ZoneNotFound();
+        return (z.latE6, z.lngE6);
+    }
+
+    function getZoneSpeedLimit(bytes32 zoneId) external view returns (uint16 speedLimitKph) {
+        if (_zonesById[zoneId].blockRegistered == 0) revert CD_ZoneNotFound();
+        return _zonesById[zoneId].speedLimitKph;
+    }
+
+    function canClaimZone(bytes32 zoneId) external view returns (bool) {
+        RadarZone storage z = _zonesById[zoneId];
+        return z.blockRegistered != 0 && z.active && !z.claimed && z.rewardWei > 0 && poolBalance >= z.rewardWei;
+    }
+
+    function getConstantsForOffchain() external pure returns (
+        uint256 maxZones,
+        uint16 maxSpeedKph,
+        uint16 minSpeedKph,
+        uint256 maxBatch,
+        bytes32 networkTag,
+        bytes32 domainSeed
+    ) {
+        maxZones = CD_MAX_RADAR_ZONES;
+        maxSpeedKph = CD_MAX_SPEED_KPH;
+        minSpeedKph = CD_MIN_SPEED_KPH;
+        maxBatch = CD_MAX_BATCH_QUERY;
+        networkTag = CD_NETWORK_TAG;
+        domainSeed = CD_DOMAIN_SEED;
+    }
+
+    function getRoleAddresses() external view returns (address gov, address treas, address valid, address feeCol) {
+        gov = governor;
+        treas = treasury;
+        valid = validator;
+        feeCol = feeCollector;
+    }
+
+    function isPausedCD() external view returns (bool) {
+        return paused();
+    }
+
+    function getZoneIdPrefix() external pure returns (string memory) {
+        return CD_ZONE_ID_PREFIX;
+    }
+
+    function totalZonesRegisteredCount() external view returns (uint256) {
+        return totalZonesRegistered;
+    }
+
+    function totalZonesActiveCount() external view returns (uint256) {
