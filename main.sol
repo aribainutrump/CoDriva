@@ -358,3 +358,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
         if (z.blockRegistered == 0) revert CD_ZoneNotFound();
         return ZoneSummary({
             zoneId: z.zoneId,
+            latE6: z.latE6,
+            lngE6: z.lngE6,
+            speedLimitKph: z.speedLimitKph,
+            active: z.active,
+            claimed: z.claimed,
+            blockRegistered: z.blockRegistered
+        });
+    }
+
+    function zoneExists(bytes32 zoneId) external view returns (bool) {
+        return _zonesById[zoneId].blockRegistered != 0;
+    }
+
+    function isZoneActive(bytes32 zoneId) external view returns (bool) {
+        return _zonesById[zoneId].active;
+    }
+
+    function getZoneRewardWei(bytes32 zoneId) external view returns (uint256) {
+        return _zonesById[zoneId].rewardWei;
+    }
+
+    function getZoneReporter(bytes32 zoneId) external view returns (address) {
+        if (_zonesById[zoneId].blockRegistered == 0) revert CD_ZoneNotFound();
+        return _zonesById[zoneId].reporter;
+    }
+
+    function getZoneValidationStatus(bytes32 zoneId) external view returns (ValidationStatus) {
+        if (_zonesById[zoneId].blockRegistered == 0) revert CD_ZoneNotFound();
+        return _zonesById[zoneId].validationStatus;
+    }
+
+    function getZoneType(bytes32 zoneId) external view returns (ZoneType) {
+        if (_zonesById[zoneId].blockRegistered == 0) revert CD_ZoneNotFound();
+        return _zonesById[zoneId].zoneType;
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (LISTS & COUNTS)
+    // -------------------------------------------------------------------------
+
+    function getZoneCount() external view returns (uint256) {
+        return _allZoneIds.length;
+    }
+
+    function getActiveZoneCount() external view returns (uint256) {
+        return totalZonesActive;
+    }
+
+    function getZoneIdAt(uint256 index) external view returns (bytes32) {
+        if (index >= _allZoneIds.length) revert CD_ZoneNotFound();
+        return _allZoneIds[index];
+    }
+
+    function getZonesInRange(uint256 offset, uint256 limit) external view returns (ZoneSummary[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 len = _allZoneIds.length;
+        if (offset >= len) return new ZoneSummary[](0);
+        uint256 end = offset + limit;
+        if (end > len) end = len;
+        uint256 n = end - offset;
+        out = new ZoneSummary[](n);
+        for (uint256 i = 0; i < n; i++) {
+            bytes32 zid = _allZoneIds[offset + i];
+            RadarZone storage z = _zonesById[zid];
+            out[i] = ZoneSummary({
+                zoneId: z.zoneId,
+                latE6: z.latE6,
+                lngE6: z.lngE6,
+                speedLimitKph: z.speedLimitKph,
+                active: z.active,
+                claimed: z.claimed,
+                blockRegistered: z.blockRegistered
+            });
+        }
+    }
+
+    function getActiveZonesInRange(uint256 offset, uint256 limit) external view returns (ZoneSummary[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 collected = 0;
+        uint256 len = _allZoneIds.length;
+        ZoneSummary[] memory tmp = new ZoneSummary[](limit);
+        for (uint256 i = offset; i < len && collected < limit; i++) {
+            RadarZone storage z = _zonesById[_allZoneIds[i]];
+            if (!z.active) continue;
+            tmp[collected] = ZoneSummary({
+                zoneId: z.zoneId,
+                latE6: z.latE6,
+                lngE6: z.lngE6,
+                speedLimitKph: z.speedLimitKph,
+                active: z.active,
