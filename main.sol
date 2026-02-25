@@ -808,3 +808,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
     }
 
     function isValidLatE6(int32 latE6) external pure returns (bool) {
+        return latE6 >= CD_LAT_E6_MIN && latE6 <= CD_LAT_E6_MAX;
+    }
+
+    function isValidLngE6(int32 lngE6) external pure returns (bool) {
+        return lngE6 >= CD_LNG_E6_MIN && lngE6 <= CD_LNG_E6_MAX;
+    }
+
+    // -------------------------------------------------------------------------
+    // INTERNAL HELPERS
+    // -------------------------------------------------------------------------
+
+    function _requireValidCoordinates(int32 latE6, int32 lngE6) internal pure {
+        if (latE6 < CD_LAT_E6_MIN || latE6 > CD_LAT_E6_MAX) revert CD_InvalidLatE6();
+        if (lngE6 < CD_LNG_E6_MIN || lngE6 > CD_LNG_E6_MAX) revert CD_InvalidLngE6();
+    }
+
+    function _zoneIndex(bytes32 zoneId) internal view returns (uint256) {
+        return _zoneIndexById[zoneId];
+    }
+
+    function _isZoneRegistered(bytes32 zoneId) internal view returns (bool) {
+        return _zonesById[zoneId].blockRegistered != 0;
+    }
+
+    function _isZoneActive(bytes32 zoneId) internal view returns (bool) {
+        return _zonesById[zoneId].active;
+    }
+
+    function _getZone(bytes32 zoneId) internal view returns (RadarZone storage) {
+        return _zonesById[zoneId];
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (FLAT / ABI-FRIENDLY)
+    // -------------------------------------------------------------------------
+
+    function getZoneFlat(bytes32 zoneId) external view returns (
+        bytes32 zid,
+        int32 lat,
+        int32 lng,
+        uint16 speedKph,
+        address rep,
+        uint256 reward,
+        bool claimed,
+        bool active,
+        uint256 blockReg,
+        ZoneType zt,
+        ValidationStatus vs
+    ) {
+        RadarZone storage z = _zonesById[zoneId];
+        if (z.blockRegistered == 0) revert CD_ZoneNotFound();
+        return (z.zoneId, z.latE6, z.lngE6, z.speedLimitKph, z.reporter, z.rewardWei, z.claimed, z.active, z.blockRegistered, z.zoneType, z.validationStatus);
+    }
+
+    function getZoneFlatBatch(bytes32[] calldata zoneIds) external view returns (
+        bytes32[] memory zids,
+        int32[] memory lats,
+        int32[] memory lngs,
+        uint16[] memory speedKphs,
+        address[] memory reporters,
+        uint256[] memory rewards,
+        bool[] memory claimeds,
+        bool[] memory actives,
+        uint256[] memory blockRegs,
+        ZoneType[] memory ztypes,
+        ValidationStatus[] memory vstatuses
+    ) {
+        uint256 n = zoneIds.length;
+        if (n > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        zids = new bytes32[](n);
+        lats = new int32[](n);
+        lngs = new int32[](n);
+        speedKphs = new uint16[](n);
+        reporters = new address[](n);
+        rewards = new uint256[](n);
+        claimeds = new bool[](n);
+        actives = new bool[](n);
+        blockRegs = new uint256[](n);
+        ztypes = new ZoneType[](n);
+        vstatuses = new ValidationStatus[](n);
+        for (uint256 i = 0; i < n; i++) {
+            RadarZone storage z = _zonesById[zoneIds[i]];
+            zids[i] = z.zoneId;
+            lats[i] = z.latE6;
+            lngs[i] = z.lngE6;
+            speedKphs[i] = z.speedLimitKph;
+            reporters[i] = z.reporter;
+            rewards[i] = z.rewardWei;
+            claimeds[i] = z.claimed;
+            actives[i] = z.active;
