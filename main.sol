@@ -448,3 +448,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
                 lngE6: z.lngE6,
                 speedLimitKph: z.speedLimitKph,
                 active: z.active,
+                claimed: z.claimed,
+                blockRegistered: z.blockRegistered
+            });
+            collected++;
+        }
+        out = new ZoneSummary[](collected);
+        for (uint256 j = 0; j < collected; j++) out[j] = tmp[j];
+    }
+
+    function getZoneIdsByReporter(address reporter) external view returns (bytes32[] memory) {
+        return _zoneIdsByReporter[reporter];
+    }
+
+    function getReporterZoneCount(address reporter) external view returns (uint256) {
+        return _zoneIdsByReporter[reporter].length;
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (STATS & POOL)
+    // -------------------------------------------------------------------------
+
+    function getPoolBalance() external view returns (uint256) {
+        return poolBalance;
+    }
+
+    function getTotalRewardsClaimed() external view returns (uint256) {
+        return totalRewardsClaimed;
+    }
+
+    function getTotalPoolToppedUp() external view returns (uint256) {
+        return totalPoolToppedUp;
+    }
+
+    function getNetworkTag() external pure returns (bytes32) {
+        return CD_NETWORK_TAG;
+    }
+
+    function getDomainSeed() external pure returns (bytes32) {
+        return CD_DOMAIN_SEED;
+    }
+
+    function getDeployBlock() external view returns (uint256) {
+        return deployBlock;
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (BY TYPE / STATUS / SPEED)
+    // -------------------------------------------------------------------------
+
+    function getZonesByTypeInRange(ZoneType zoneType, uint256 offset, uint256 limit) external view returns (ZoneSummary[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 collected = 0;
+        uint256 len = _allZoneIds.length;
+        ZoneSummary[] memory tmp = new ZoneSummary[](limit);
+        for (uint256 i = 0; i < len && collected < limit; i++) {
+            RadarZone storage z = _zonesById[_allZoneIds[i]];
+            if (z.zoneType != zoneType) continue;
+            if (collected < offset) { collected++; continue; }
+            tmp[collected - offset] = ZoneSummary({
+                zoneId: z.zoneId,
+                latE6: z.latE6,
+                lngE6: z.lngE6,
+                speedLimitKph: z.speedLimitKph,
+                active: z.active,
+                claimed: z.claimed,
+                blockRegistered: z.blockRegistered
+            });
+            collected++;
+            if (collected - offset >= limit) break;
+        }
+        uint256 n = collected > offset ? collected - offset : 0;
+        if (n > limit) n = limit;
+        out = new ZoneSummary[](n);
+        for (uint256 j = 0; j < n; j++) out[j] = tmp[j];
+    }
+
+    function getZonesByValidationStatusInRange(ValidationStatus status, uint256 offset, uint256 limit) external view returns (ZoneSummary[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 collected = 0;
+        uint256 len = _allZoneIds.length;
+        ZoneSummary[] memory tmp = new ZoneSummary[](limit);
+        for (uint256 i = 0; i < len && collected < limit; i++) {
+            RadarZone storage z = _zonesById[_allZoneIds[i]];
+            if (z.validationStatus != status) continue;
+            if (collected < offset) { collected++; continue; }
+            tmp[collected - offset] = ZoneSummary({
+                zoneId: z.zoneId,
+                latE6: z.latE6,
+                lngE6: z.lngE6,
+                speedLimitKph: z.speedLimitKph,
