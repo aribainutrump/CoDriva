@@ -988,3 +988,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
 
     // -------------------------------------------------------------------------
     // VIEW (REPORTER STATS)
+    // -------------------------------------------------------------------------
+
+    function getReporterStats(address reporter) external view returns (
+        uint256 totalZones,
+        uint256 activeZones,
+        uint256 unclaimedZones,
+        uint256 claimableWei
+    ) {
+        bytes32[] storage ids = _zoneIdsByReporter[reporter];
+        totalZones = ids.length;
+        for (uint256 i = 0; i < ids.length; i++) {
+            RadarZone storage z = _zonesById[ids[i]];
+            if (z.active) activeZones++;
+            if (z.active && !z.claimed && z.rewardWei > 0) {
+                unclaimedZones++;
+                claimableWei += z.rewardWei;
+            }
+        }
+    }
+
+    function getReporterZoneIdsPaginated(address reporter, uint256 offset, uint256 limit) external view returns (bytes32[] memory out) {
+        if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        bytes32[] storage ids = _zoneIdsByReporter[reporter];
+        uint256 len = ids.length;
+        if (offset >= len) return new bytes32[](0);
+        uint256 end = offset + limit;
+        if (end > len) end = len;
+        uint256 n = end - offset;
+        out = new bytes32[](n);
+        for (uint256 i = 0; i < n; i++) out[i] = ids[offset + i];
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (GLOBAL STATS AGGREGATE)
+    // -------------------------------------------------------------------------
+
+    function getGlobalStats() external view returns (
+        uint256 totalZones,
+        uint256 activeZones,
+        uint256 totalRewardsClaimedWei,
+        uint256 poolBalanceWei,
+        uint256 totalToppedUpWei,
+        uint256 deployBlockNum
+    ) {
+        totalZones = _allZoneIds.length;
+        activeZones = totalZonesActive;
+        totalRewardsClaimedWei = totalRewardsClaimed;
+        poolBalanceWei = poolBalance;
+        totalToppedUpWei = totalPoolToppedUp;
+        deployBlockNum = deployBlock;
+    }
+
+    function getZoneTypeName(ZoneType zt) external pure returns (string memory) {
+        if (zt == ZoneType.FixedCamera) return "FixedCamera";
+        if (zt == ZoneType.MobileUnit) return "MobileUnit";
+        if (zt == ZoneType.AverageSpeed) return "AverageSpeed";
+        if (zt == ZoneType.RedLight) return "RedLight";
+        return "Unknown";
+    }
+
+    function getValidationStatusName(ValidationStatus vs) external pure returns (string memory) {
+        if (vs == ValidationStatus.Pending) return "Pending";
+        if (vs == ValidationStatus.Verified) return "Verified";
+        if (vs == ValidationStatus.Rejected) return "Rejected";
+        return "Unknown";
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (BATCH COUNTS BY CRITERIA)
+    // -------------------------------------------------------------------------
+
+    function countActiveZonesInSpeedRange(uint16 minKph, uint16 maxKph) external view returns (uint256 count) {
+        if (minKph > maxKph) return 0;
+        uint256 len = _allZoneIds.length;
+        for (uint256 i = 0; i < len; i++) {
+            RadarZone storage z = _zonesById[_allZoneIds[i]];
+            if (z.active && z.speedLimitKph >= minKph && z.speedLimitKph <= maxKph) count++;
+        }
+    }
+
+    function countVerifiedZones() external view returns (uint256 count) {
+        uint256 len = _allZoneIds.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (_zonesById[_allZoneIds[i]].validationStatus == ValidationStatus.Verified) count++;
+        }
+    }
+
+    function countPendingZones() external view returns (uint256 count) {
+        uint256 len = _allZoneIds.length;
+        for (uint256 i = 0; i < len; i++) {
