@@ -88,3 +88,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
     struct RadarZone {
         bytes32 zoneId;
         int32 latE6;
+        int32 lngE6;
+        uint16 speedLimitKph;
+        address reporter;
+        uint256 rewardWei;
+        bool claimed;
+        bool active;
+        uint256 blockRegistered;
+        ZoneType zoneType;
+        ValidationStatus validationStatus;
+        uint256 lastUpdatedBlock;
+    }
+
+    struct ZoneSummary {
+        bytes32 zoneId;
+        int32 latE6;
+        int32 lngE6;
+        uint16 speedLimitKph;
+        bool active;
+        bool claimed;
+        uint256 blockRegistered;
+    }
+
+    struct ClaimParams {
+        bytes32 zoneId;
+        address claimer;
+    }
+
+    // -------------------------------------------------------------------------
+    // IMMUTABLES
+    // -------------------------------------------------------------------------
+
+    address public immutable governor;
+    address public immutable treasury;
+    uint256 public immutable deployBlock;
+
+    // -------------------------------------------------------------------------
+    // STATE
+    // -------------------------------------------------------------------------
+
+    address public validator;
+    address public feeCollector;
+    mapping(bytes32 => RadarZone) private _zonesById;
+    mapping(address => bytes32[]) private _zoneIdsByReporter;
+    bytes32[] private _allZoneIds;
+    uint256 public totalZonesRegistered;
+    uint256 public totalZonesActive;
+    uint256 public totalRewardsClaimed;
+    uint256 public poolBalance;
+    uint256 public totalPoolToppedUp;
+    mapping(bytes32 => uint256) private _zoneIndexById;
+
+    // -------------------------------------------------------------------------
+    // CONSTRUCTOR
+    // -------------------------------------------------------------------------
+
+    constructor() {
+        governor = address(0x4B7c2E9f1A6d3F8b0C5e2A9D7f4B1c8E0a3F6d9B2);
+        treasury = address(0x2F8a1D4c7E0b3F6a9C2e5B8d1F4a7E0c3D6f9B1e4);
+        validator = address(0x9E3b6C0d2F5a8B1e4D7c0A3f6B9e2C5d8F1a4c7E0);
+        feeCollector = address(0xD1a4E7c0F3b6A9d2C5e8B1f4A7c0D3e6F9a2b5d8);
+        deployBlock = block.number;
+        if (governor == address(0) || treasury == address(0)) revert CD_ZeroAddress();
+    }
+
+    // -------------------------------------------------------------------------
+    // MODIFIERS
+    // -------------------------------------------------------------------------
+
+    modifier onlyGovernor() {
+        if (msg.sender != governor) revert CD_NotGovernor();
+        _;
+    }
+
+    modifier onlyTreasury() {
+        if (msg.sender != treasury) revert CD_NotTreasury();
+        _;
+    }
+
+    modifier whenNotPausedCD() {
+        if (paused()) revert CD_Paused();
+        _;
+    }
+
+    modifier onlyValidator() {
+        if (msg.sender != validator) revert CD_NotValidator();
+        _;
+    }
+
+    // -------------------------------------------------------------------------
+    // EXTERNAL (GOVERNANCE)
