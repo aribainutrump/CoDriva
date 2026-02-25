@@ -718,3 +718,93 @@ contract CoDriva is ReentrancyGuard, Pausable {
 
     function getZoneDataRowsActiveOnly(uint256 offset, uint256 limit) external view returns (ZoneDataRow[] memory out) {
         if (limit > CD_MAX_BATCH_QUERY) revert CD_BatchTooLarge();
+        uint256 collected = 0;
+        uint256 len = _allZoneIds.length;
+        ZoneDataRow[] memory tmp = new ZoneDataRow[](limit);
+        for (uint256 i = 0; i < len && collected < limit; i++) {
+            RadarZone storage z = _zonesById[_allZoneIds[i]];
+            if (!z.active) continue;
+            if (collected < offset) { collected++; continue; }
+            tmp[collected - offset] = ZoneDataRow({
+                zoneId: z.zoneId,
+                latE6: z.latE6,
+                lngE6: z.lngE6,
+                speedLimitKph: z.speedLimitKph,
+                reporter: z.reporter,
+                rewardWei: z.rewardWei,
+                claimed: z.claimed,
+                active: z.active,
+                blockRegistered: z.blockRegistered,
+                zoneType: z.zoneType,
+                validationStatus: z.validationStatus
+            });
+            collected++;
+            if (collected - offset >= limit) break;
+        }
+        uint256 n = collected > offset ? collected - offset : 0;
+        if (n > limit) n = limit;
+        out = new ZoneDataRow[](n);
+        for (uint256 j = 0; j < n; j++) out[j] = tmp[j];
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEW (CONFIG / CONSTANTS AGGREGATE)
+    // -------------------------------------------------------------------------
+
+    struct CoDrivaConfig {
+        bytes32 networkTag;
+        bytes32 domainSeed;
+        uint256 maxRadarZones;
+        uint16 maxSpeedKph;
+        uint16 minSpeedKph;
+        uint256 maxBatchQuery;
+        address governor;
+        address treasury;
+        address validator;
+        address feeCollector;
+        uint256 deployBlock;
+    }
+
+    function getConfig() external view returns (CoDrivaConfig memory c) {
+        c = CoDrivaConfig({
+            networkTag: CD_NETWORK_TAG,
+            domainSeed: CD_DOMAIN_SEED,
+            maxRadarZones: CD_MAX_RADAR_ZONES,
+            maxSpeedKph: CD_MAX_SPEED_KPH,
+            minSpeedKph: CD_MIN_SPEED_KPH,
+            maxBatchQuery: CD_MAX_BATCH_QUERY,
+            governor: governor,
+            treasury: treasury,
+            validator: validator,
+            feeCollector: feeCollector,
+            deployBlock: deployBlock
+        });
+    }
+
+    function getStats() external view returns (
+        uint256 zoneCount,
+        uint256 activeCount,
+        uint256 totalClaimed,
+        uint256 poolBal,
+        uint256 totalToppedUp
+    ) {
+        zoneCount = _allZoneIds.length;
+        activeCount = totalZonesActive;
+        totalClaimed = totalRewardsClaimed;
+        poolBal = poolBalance;
+        totalToppedUp = totalPoolToppedUp;
+    }
+
+    // -------------------------------------------------------------------------
+    // PURE HELPERS (FOR FRONTEND / OFFCHAIN)
+    // -------------------------------------------------------------------------
+
+    function zoneIdFromString(string calldata prefix, uint256 nonce) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(prefix, nonce));
+    }
+
+    function isValidSpeedLimitKph(uint16 kph) external pure returns (bool) {
+        return kph >= CD_MIN_SPEED_KPH && kph <= CD_MAX_SPEED_KPH;
+    }
+
+    function isValidLatE6(int32 latE6) external pure returns (bool) {
